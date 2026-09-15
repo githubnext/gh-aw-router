@@ -184,7 +184,7 @@ async def _transport_error(_request: Request, error: Exception) -> JSONResponse:
 
 
 async def _internal_error(_request: Request, error: Exception) -> JSONResponse:
-    _LOGGER.exception("unhandled gh-aw-router HTTP error", exc_info=error)
+    _LOGGER.error("unhandled gh-aw-router HTTP error", exc_info=error)
     return _error_response(
         500,
         ErrorCode.INTERNAL_ERROR,
