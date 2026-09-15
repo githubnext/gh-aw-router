@@ -371,6 +371,37 @@ def test_transport_errors_use_the_shared_envelope(synthetic_service: GhAwRouterS
     assert "POST" in wrong_method.headers["allow"]
 
 
+def test_internal_errors_log_tracebacks_without_exposing_details(
+    synthetic_service: GhAwRouterService, caplog: pytest.LogCaptureFixture
+) -> None:
+    app = create_app(synthetic_service)
+    error = RuntimeError("private internal failure details")
+
+    @app.get("/internal-error")
+    def internal_error() -> None:
+        raise error
+
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/internal-error")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "code": "internal_error",
+        "detail": "internal error while processing the request",
+    }
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "unhandled gh-aw-router HTTP error"
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelname == "ERROR"
+    assert record.exc_info is not None
+    assert record.exc_info[1] is error
+    assert record.exc_info[2] is not None
+
+
 @pytest.mark.parametrize("path", ["/classify", "/route", "/route/", "/missing", "/healthz"])
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH"])
 @pytest.mark.parametrize("content_length", [None, b"100"])
