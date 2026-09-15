@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 
 import pytest
 import yaml
+from packaging.specifiers import SpecifierSet
 
 import gh_aw_router
 from gh_aw_router import cli
@@ -36,6 +37,8 @@ def test_package_metadata_matches_the_runtime() -> None:
     assert f"ARG VERSION={project['version']}\n" in dockerfile
     assert installed["License-Expression"] == project["license"]
     assert installed["Requires-Python"].replace(" ", "") == project["requires-python"]
+    image_python = _dockerfile_value(dockerfile, r"\nFROM python:(\d+\.\d+\.\d+)-")
+    assert image_python in SpecifierSet(project["requires-python"])
     repository = "https://github.com/githubnext/gh-aw-router"
     assert project["urls"] == {
         "Homepage": repository,
@@ -105,6 +108,15 @@ def test_release_ci_pins_actions_and_covers_dependency_ecosystems() -> None:
         "uv",
         "docker",
     }
+    docker_updates = next(
+        item for item in dependabot["updates"] if item["package-ecosystem"] == "docker"
+    )
+    assert docker_updates.get("ignore") == [
+        {
+            "dependency-name": "python",
+            "update-types": ["version-update:semver-major", "version-update:semver-minor"],
+        }
+    ]
 
 
 def test_package_declares_inline_type_information() -> None:

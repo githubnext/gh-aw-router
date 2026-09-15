@@ -75,6 +75,8 @@ credentials through Docker build arguments. Routing JSON files are generated off
 hand-edit rankings or add runtime dependencies on training tools.
 
 Dependabot is configured for weekly updates to uv dependencies, Docker images, and GitHub Actions.
+Python image updates stay on the supported minor release line, with patch and digest updates
+enabled. Review package metadata, dependency locks, and CI coverage before changing that line.
 After a dependency update, regenerate `requirements.lock` with the command above and include
 it in the same pull request. The isolated release tests reject a stale export. Keep external
 actions pinned to full commit SHAs when reviewing updates.
