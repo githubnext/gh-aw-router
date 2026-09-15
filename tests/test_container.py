@@ -155,10 +155,58 @@ def _wait_until_healthy(container: str) -> None:
 def _assert_hardening(container: str) -> None:
     details = json.loads(_docker(["inspect", container]).stdout)[0]
     assert details["Config"]["User"] == "10001:10001"
+    assert details["Config"]["ExposedPorts"] == {"8737/tcp": {}}
     assert details["HostConfig"]["ReadonlyRootfs"] is True
     assert "ALL" in details["HostConfig"]["CapDrop"]
     assert "no-new-privileges" in details["HostConfig"]["SecurityOpt"]
-    assert details["NetworkSettings"]["Ports"] == {"8737/tcp": None}
+    assert not details["HostConfig"]["PortBindings"]
+    assert not any(details["NetworkSettings"]["Ports"].values())
+
+
+@pytest.mark.parametrize(
+    ("ports", "port_bindings", "valid"),
+    [
+        ({}, None, True),
+        ({"8737/tcp": None}, {}, True),
+        ({"8737/tcp": []}, {}, True),
+        ({"8737/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8737"}]}, {}, False),
+        ({"8737/tcp": None}, {"8737/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8737"}]}, False),
+        (
+            {"8737/tcp": None, "9000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "9000"}]},
+            {},
+            False,
+        ),
+    ],
+    ids=["empty", "null", "empty-list", "published", "configured-binding", "other-port"],
+)
+def test_hardening_rejects_published_ports(
+    monkeypatch: pytest.MonkeyPatch,
+    ports: dict[str, list[dict[str, str]] | None],
+    port_bindings: dict[str, list[dict[str, str]]] | None,
+    valid: bool,
+) -> None:
+    details = {
+        "Config": {"User": "10001:10001", "ExposedPorts": {"8737/tcp": {}}},
+        "HostConfig": {
+            "ReadonlyRootfs": True,
+            "CapDrop": ["ALL"],
+            "SecurityOpt": ["no-new-privileges"],
+            "PortBindings": port_bindings,
+        },
+        "NetworkSettings": {"Ports": ports},
+    }
+
+    def inspect(arguments: list[str]) -> subprocess.CompletedProcess[str]:
+        assert arguments == ["inspect", "test-container"]
+        return subprocess.CompletedProcess(arguments, 0, json.dumps([details]), "")
+
+    monkeypatch.setattr(f"{__name__}._docker", inspect)
+
+    if valid:
+        _assert_hardening("test-container")
+    else:
+        with pytest.raises(AssertionError):
+            _assert_hardening("test-container")
 
 
 def _probe_http(
