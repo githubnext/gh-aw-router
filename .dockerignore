@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!LICENSE
+!requirements.lock
+!src/
+!src/**
+!routing/
+!routing/cost-*.json
+**/__pycache__/
