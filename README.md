@@ -63,12 +63,12 @@ eligible model. `--help` and `--version` exit successfully without loading a tab
 
 ## HTTP API
 
-The authoritative contract is [openapi.yaml](openapi.yaml), currently API version `0.2.0`. Use
-the document from the matching release for validation and client generation. The service does
+The authoritative contract is [openapi.yaml](openapi.yaml). Its document version follows the
+router release. Use the matching document for validation and client generation. The service does
 not serve a generated `/openapi.json`, `/docs`, or `/redoc`.
 
 - `GET /healthz` for readiness
-- `GET /capabilities` for the API version, served routing profiles, models, and efforts
+- `GET /capabilities` for the router release, served routing profiles, models, and efforts
 - `POST /classify` for a classification prompt and ranked classifier choices
 - `POST /route` for ranked task-model choices
 
@@ -77,16 +77,18 @@ Routing ignores model-effort pairs absent from the table and returns `no_route` 
 supported, context-eligible choices remain. Unsupported objectives and malformed requests
 are still rejected. Neither operation calls a provider or invents a fallback choice.
 
-Both planning requests require `api_version` set to `"0.2.0"`, `repository` in `owner/repo`
-form, a nonblank `task_id`, and a `conversation` holding at least one user message with
-nonblank text. Keep the repository and task identifiers stable for one task across
-classification, routing, and retries. They identify the caller's work but do not select a
-policy or create stored state.
+Both planning requests require a `conversation` holding at least one user message with
+nonblank text. Requests contain only decision inputs. The caller retains execution
+identity for accounting and outcome correlation. The router stores no task history.
+Remove `repository` and `task_id` from older client requests. Both fields are rejected,
+not ignored. Routing-table `repository` metadata is separate and remains unchanged.
 
-To update API `0.1.0` requests, set `api_version` to `"0.2.0"` and move task labels into
-`classification.labels`. Include `classification.mode`, using `"unknown"` when no mode was
-inferred. Remove `objective.overrides` entirely, even when null, and replace `custom` with
-`economy`, `balanced`, `robust`, or `auto`. Requests using API `0.1.0` are rejected.
+Requests do not negotiate an independent API version. When updating an older client, remove
+`api_version` from requests and stop expecting `api_versions` in capabilities. The removed
+request field is rejected, not ignored. Test the client, OpenAPI document, contract fixtures,
+and immutable router image together. Update them together when adopting a changed contract.
+Keep the previous tested image for rollback rather than assuming any newer image is compatible.
+The reported release is diagnostic metadata, not proof of an image's identity.
 
 Application errors use a `code` and `detail` envelope, including unknown paths and unsupported
 methods. Schema violations name the failing fields without echoing submitted values. Serving
@@ -103,7 +105,9 @@ while routing skips those choices. Omit effort only for models without effort se
 string `"none"` is an explicit effort, not an omission. The service never infers effort settings.
 Routing uses `classification.labels` when supplied. When `classification` is omitted or null,
 deterministic heuristics infer task type and scope from the last authored user message and
-leave complexity unknown.
+leave complexity unknown. Every uninferred field remains `unknown`. For example, `Proceed.`
+uses all three unknown labels, while `Fix this function.` infers `fix` and `local` but leaves
+complexity unknown. The eligible choices still follow that table cell's ranking.
 
 ### Examples
 
@@ -142,11 +146,21 @@ message, with no tools. Its expected output has this shape, defined by
 Forward the validated classifier output unchanged in `/route`'s `classification` field,
 as the routing example does. `/classify` itself returns a call plan, not this inferred result.
 The caller runs the classifier and passes its output to `/route`.
+Successful classification plans always contain at least one eligible choice.
+If no offered classifier choice is supported, `/classify` returns `422 invalid_request`.
+An empty successful ranking is not a signal to continue without classification.
+Before executing a plan, the caller must check the complete generated messages against
+the classifier model's context capacity, including output and reasoning allowance.
+Prompt escaping can expand the input. The HTTP request-size limit does not prove fit.
 
 Set `objective.mode` to `"auto"` to use `classification.mode`, which recommends `economy`,
 `balanced`, or `robust`. Auto falls back to `balanced` when `classification` is omitted or
 null, or its mode is `unknown`. If classification fails, omit it or send null. A supplied
 classification must include valid `labels` and `mode` fields or the request is rejected.
+The caller must parse and validate raw classifier output, including invalid JSON, fenced
+responses, and schema violations. The router does not repair that output or decide whether
+caller policy permits continuing after a failure. This fallback never invents a middle-ranked
+model or a default reasoning effort. Context exclusions and missing-profile errors still apply.
 
 An explicit `economy`, `balanced`, or `robust` objective mode always takes precedence over
 the classifier's mode. The goal remains the caller's choice of `cost` or `cost-speed`.
@@ -200,7 +214,8 @@ order, so they differ only in their routing order. Select a directory or a singl
 read-only.
 
 Only schema 5 is supported. A schema-5 table declares one fixed `cost` or `cost-speed` profile
-and carries no default-effort aliases.
+and carries no default-effort aliases. This format marker remains independent because tables
+can be supplied through a file or mount without replacing the router image.
 
 ## Container
 
@@ -209,6 +224,9 @@ Build from this directory. The Docker build context is self-contained.
 ```bash
 docker build --tag gh-aw-router:dev .
 ```
+
+The optional `VERSION` build argument must match the package version. A mismatch fails
+the build rather than publishing image metadata that disagrees with the CLI or service.
 
 The image bundles every published table under `/routing` and serves all six profiles. It runs as
 user `10001:10001` and needs no credentials or outbound network. This invocation uses a private
@@ -238,11 +256,62 @@ To replace the bundled tables, add these options before the image name.
 --env GH_AW_ROUTER_ROUTING_TABLES=/mnt/routing
 ```
 
+## Contract fixtures and artifacts
+
+[The portable corpus](tests/fixtures/routing-contract) covers all four endpoints
+using synthetic model identities and six distinguishable table profiles. The same reviewed
+request bytes run through HTTP adapter tests and the hardened Linux amd64 container tests.
+Classifier prompts are fixed expected data, not regenerated during tests.
+
+Endpoint files contain complete requests and reviewed expected responses. The test-only
+`response_file` reference shares an exact classifier response between cases. The exporter
+resolves it so consumers receive concrete JSON responses without a template language.
+
+The archive contains this README, `cases.json`, six synthetic profiles in `tables/`,
+`openapi.yaml`, the unchanged external `integration-contract.md`, and `manifest.json`.
+Cases name the method, path, expected status, and optional headers. Send each UTF-8
+`request_body` unchanged for wire replay. Default to `Content-Type: application/json`
+when headers are omitted. A 204 response has no body. `raw_request` marks malformed
+JSON, and `request_valid: false` marks a schema-invalid object.
+
+A case's optional `profiles` list restricts the table files loaded. Otherwise load all
+six. Mount the selected directory read-only and readable by UID/GID 10001. The fake model
+identities are test data, not a provider catalogue. Never send them to live providers.
+
+Compare successful responses exactly, including choice order, effort omission, and prompt
+strings. For errors, compare status and stable `code`, then validate the full envelope
+against OpenAPI. Fixture `detail` text is representative mock data, not a promise to
+preserve incidental diagnostic wording. Verify archive and manifest checksums before use.
+
+Export a corpus archive from a clean source checkout with Python 3.12 and development
+dependencies installed. Supply the reviewed integration attachment and its expected checksum.
+The attachment is preserved unchanged and is not included in the runtime package.
+
+```bash
+uv run --locked python tests/contract_corpus.py \
+  --integration-contract /path/to/integration-contract.md \
+  --integration-contract-sha256 "$INTEGRATION_CONTRACT_SHA256" \
+  --output dist/routing-contract.tar.gz
+```
+
+The command prints the archive checksum. Its manifest records the source SHA, router release,
+table schema, attachment revision, and every payload file's SHA-256. A dirty or unidentified
+checkout requires `--development` and is explicitly marked as non-release provenance.
+Repeated exports with the same inputs and source state produce identical bytes. Repository
+OpenAPI text uses LF in the archive, while the external attachment retains its original bytes.
+
+Ordinary PR CI runs corpus, packaging, and native Linux amd64 Docker checks without
+provider credentials. Use the exporter above to create a local contract archive.
+
+Publication requires a separate reviewed source and registry authorization. A deployment pin
+has the form `<approved-registry>/<repository>:<reviewed-tag>@sha256:<manifest-digest>`.
+A local image ID or Docker archive checksum is not that registry manifest digest. Retain
+supported immutable images and matching contract archives. Deliver security fixes through
+supported release updates and tested client pin changes, not replacement bytes under old pins.
+
 ## Contributing and security
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers development conventions and checks. The package
-version, the planning API version, and the table schema version change independently, so read
-all three from `/capabilities` and the loaded table rather than assuming they move together.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers development conventions and checks.
 
 The service intentionally has no authentication or TLS. Keep it on a private network. Report
 vulnerabilities through [SECURITY.md](SECURITY.md). The code is licensed under [MIT](LICENSE).

@@ -7,15 +7,17 @@ from typing import Any
 
 import pytest
 import yaml
+from contract_corpus import contract_tables, load_cases, request_bytes, validate_case
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 from jsonschema.protocols import Validator
 from pydantic import ValidationError
 
+from gh_aw_router import __version__
 from gh_aw_router.contracts import (
-    API_VERSION,
     ClassifyRequest,
+    ClassifyResponse,
     ErrorCode,
     ReasoningEffort,
     Role,
@@ -42,11 +44,12 @@ def test_committed_openapi_describes_the_closed_planning_contract() -> None:
     document = load_openapi()
 
     assert document["openapi"] == "3.1.0"
-    assert document["info"]["version"] == API_VERSION
+    assert document["info"]["version"] == __version__
     assert set(document["paths"]) == {"/healthz", "/capabilities", "/classify", "/route"}
     schemas = document["components"]["schemas"]
-    assert schemas["ClassifyRequest"]["properties"]["api_version"]["const"] == API_VERSION
-    assert schemas["RouteRequest"]["properties"]["api_version"]["const"] == API_VERSION
+    assert "api_version" not in schemas["ClassifyRequest"]["properties"]
+    assert "api_version" not in schemas["RouteRequest"]["properties"]
+    assert "api_versions" not in schemas["ServiceCapabilities"]["properties"]
     labels = schemas["Labels"]
     assert labels["additionalProperties"] is False
     assert labels["required"] == [
@@ -144,6 +147,49 @@ def _validator(schema: str) -> Validator:
     )
 
 
+@pytest.mark.parametrize("case", load_cases(), ids=lambda case: case["id"])
+def test_portable_contract_corpus(case: dict[str, Any], tmp_path: Path) -> None:
+    tables = contract_tables()
+    for name in case.get("profiles", tables):
+        (tmp_path / name).write_bytes(tables[name])
+    service = GhAwRouterService.load(tmp_path)
+    request = request_bytes(case)
+    if "request" in case:
+        validator = _validator(f"{case['path'].removeprefix('/').capitalize()}Request")
+        assert validator.is_valid(json.loads(request)) is case.get("request_valid", True)
+    with TestClient(create_app(service)) as client:
+        response = client.request(
+            case["method"],
+            case["path"],
+            content=request,
+            headers=case.get("headers", {"content-type": "application/json"}),
+        )
+    validate_case(case, response.status_code, response.content, load_openapi())
+
+
+def test_successful_classification_requires_an_eligible_choice() -> None:
+    payload = {"system_prompt": "fixture", "prompt": "fixture", "ranked_choices": []}
+    assert not _validator("ClassifyResponse").is_valid(payload)
+    with pytest.raises(ValidationError, match="ranked_choices"):
+        ClassifyResponse.model_validate_json(json.dumps(payload), strict=True)
+
+
+def test_portable_corpus_has_unique_cases_and_all_endpoints() -> None:
+    cases = load_cases()
+    identities = [case["id"] for case in cases]
+    assert len(identities) == len(set(identities))
+    assert {"/healthz", "/capabilities", "/classify", "/route"} <= {case["path"] for case in cases}
+    assert {
+        (case["request"]["objective"]["goal"], case["request"]["objective"]["mode"])
+        for case in cases
+        if case["id"].startswith("explicit-")
+    } == {
+        (goal, mode)
+        for goal in ("cost", "cost-speed")
+        for mode in ("economy", "balanced", "robust")
+    }
+
+
 @pytest.mark.parametrize("command", ["classify", "route"])
 def test_http_examples_conform_to_committed_schemas(
     service: GhAwRouterService, command: str
@@ -162,9 +208,6 @@ def test_nullable_request_fields_match_committed_schema(
     model: type[ClassifyRequest] | type[RouteRequest],
 ) -> None:
     payload: dict[str, Any] = {
-        "api_version": API_VERSION,
-        "repository": "acme/widgets",
-        "task_id": "issue-123",
         "conversation": [],
         "models": [{"id": "plain", "model": "provider/plain", "effort": None}],
     }
@@ -238,24 +281,19 @@ def test_invalid_classifier_output_is_rejected_by_runtime_and_document(
 
 @pytest.mark.parametrize("model", [ClassifyRequest, RouteRequest])
 @pytest.mark.parametrize("field", ["repository", "task_id"])
-@pytest.mark.parametrize("value", [None, "", " ", 123])
-def test_invalid_metadata_is_rejected_by_runtime_and_document(
+@pytest.mark.parametrize("value", [None, "", " ", 123, "acme/widgets"])
+def test_execution_metadata_is_rejected_by_runtime_and_document(
     model: type[ClassifyRequest] | type[RouteRequest], field: str, value: object
 ) -> None:
     payload = {
-        "api_version": API_VERSION,
-        "repository": "acme/widgets",
-        "task_id": "issue-123",
         "conversation": [],
         "models": [],
     }
     if model is RouteRequest:
         payload["objective"] = {"goal": "cost", "mode": "balanced"}
-    del payload[field]
     validator = _validator(model.__name__)
-    assert not validator.is_valid(payload)
-    with pytest.raises(ValidationError):
-        model.model_validate(payload)
+    assert validator.is_valid(payload)
+    model.model_validate(payload)
     payload[field] = value
     assert not validator.is_valid(payload)
     with pytest.raises(ValidationError):

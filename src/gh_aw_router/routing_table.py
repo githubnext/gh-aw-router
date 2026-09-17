@@ -149,7 +149,6 @@ class RoutingTable:
         missing labels use heuristics. Ignore unsupported model-effort pairs.
         Raise RoutingError for invalid requests or NoRouteError when no supported
         offered candidate has sufficient context capacity.
-        API version negotiation is handled by GhAwRouterService.
         """
         profile = profile_key(request.objective)
         if request.objective not in self.document.profiles:

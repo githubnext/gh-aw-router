@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
+from gh_aw_router import __version__
 from gh_aw_router.classification import CLASSIFICATION_LABELS
 from gh_aw_router.contracts import (
-    API_VERSION,
     ClassifyRequest,
     Message,
     ModelCandidate,
@@ -40,7 +40,8 @@ def test_capabilities_are_derived_from_compiled_catalogue(
 ) -> None:
     capabilities = synthetic_service.capabilities()
 
-    assert capabilities.api_versions == (API_VERSION,)
+    assert capabilities.version == __version__
+    assert "api_versions" not in capabilities.model_dump()
     assert [profile_key(profile) for profile in capabilities.routing_profiles] == ["cost/balanced"]
     assert capabilities.execution_catalogue.model_dump(mode="json") == {
         "models": [
@@ -59,9 +60,6 @@ def test_published_tables_serve_every_profile(service: GhAwRouterService) -> Non
     pair = service.primary_table.pairs[0]
     for profile in PROFILES:
         request = RouteRequest(
-            api_version=API_VERSION,
-            repository="acme/widgets",
-            task_id="task-1",
             objective=profile,
             conversation=(Message(role=Role.USER, parts=(TextPart(text="Fix this"),)),),
             models=(ModelCandidate(id="only", model=pair.model, effort=pair.effort),),
@@ -173,9 +171,6 @@ def test_auto_does_not_substitute_for_an_unserved_profile(
 
 def test_unserved_objectives_are_invalid_requests(synthetic_service: GhAwRouterService) -> None:
     request = RouteRequest(
-        api_version=API_VERSION,
-        repository="acme/widgets",
-        task_id="task-1",
         objective=RoutingObjective(goal=RoutingGoal.COST_SPEED, mode=RoutingMode.ROBUST),
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Fix this"),)),),
         models=(ModelCandidate(id="fast", model="provider/fast"),),
@@ -213,30 +208,11 @@ def test_classification_respects_embedded_preference_order(
         for index, pair in enumerate(table.classification_ranking)
     )
     request = ClassifyRequest(
-        api_version=API_VERSION,
-        repository="acme/widgets",
-        task_id="task-1",
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Explain this"),)),),
         models=tuple(reversed(expected)),
     )
 
     assert service.classify(request).ranked_choices == expected
-
-
-@pytest.mark.parametrize("api_version", ["0.1.0", "0.5.0", "99.0.0"])
-def test_unsupported_api_version_is_an_invalid_request(
-    synthetic_service: GhAwRouterService, api_version: str
-) -> None:
-    request = ClassifyRequest(
-        api_version=api_version,
-        repository="acme/widgets",
-        task_id="task-1",
-        conversation=(),
-        models=(),
-    )
-
-    with pytest.raises(InvalidRequestError, match="unsupported planning API version"):
-        synthetic_service.classify(request)
 
 
 def test_classification_uses_balanced_cell_with_full_fallbacks(
@@ -253,9 +229,6 @@ def test_classification_uses_balanced_cell_with_full_fallbacks(
     )
     offered = (offered[0], offered[0].model_copy(update={"id": "alias"}), *offered[1:])
     request = ClassifyRequest(
-        api_version=API_VERSION,
-        repository="acme/widgets",
-        task_id="task-1",
         models=offered,
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Classify this request"),)),),
     )

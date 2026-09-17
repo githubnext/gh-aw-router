@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Any, Final, Self
+from typing import Annotated, Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, model_validator
-
-API_VERSION: Final = "0.2.0"
 
 NonEmptyString = Annotated[str, Field(min_length=1, strict=True)]
 ProviderModelId = Annotated[
@@ -154,21 +152,14 @@ class RoutingObjective(RoutingProfile):
 
 
 class PlanningRequest(StrictModel):
-    """Identify the caller's GitHub repository and task without selecting a policy.
+    """Task text shared by stateless classification and routing requests."""
 
-    Keep task_id stable across classification, routing, and retries for one task.
-    The service validates these identifiers but does not store or index requests.
-    """
-
-    api_version: StrictStr
-    repository: Annotated[str, Field(pattern=r"^[^/\s]+/[^/\s]+$", strict=True)]
-    task_id: Annotated[str, Field(min_length=1, pattern=r"\S", strict=True)]
+    conversation: tuple[Message, ...]
 
 
 class ClassifyRequest(PlanningRequest):
     """Conversation and exact dispatch choices available for classification."""
 
-    conversation: tuple[Message, ...]
     models: tuple[ModelChoice, ...]
 
     @model_validator(mode="after")
@@ -181,7 +172,7 @@ class ClassifyRequest(PlanningRequest):
 class ClassifyResponse(StrictModel):
     system_prompt: NonEmptyString
     prompt: str
-    ranked_choices: tuple[ModelChoice, ...]
+    ranked_choices: Annotated[tuple[ModelChoice, ...], Field(min_length=1)]
 
 
 class ClassifierOutput(StrictModel):
@@ -193,7 +184,6 @@ class RouteRequest(PlanningRequest):
     """Task context, optional classifier output, and exact dispatch candidates."""
 
     objective: RoutingObjective
-    conversation: tuple[Message, ...]
     current_id: NonEmptyString | None = None
     classification: ClassifierOutput | None = None
     models: tuple[ModelCandidate, ...] = ()
@@ -221,7 +211,6 @@ class ExecutionCatalogue(StrictModel):
 class ServiceCapabilities(StrictModel):
     name: StrictStr
     version: StrictStr
-    api_versions: tuple[StrictStr, ...]
     routing_profiles: Annotated[tuple[RoutingProfile, ...], Field(min_length=1)]
     execution_catalogue: ExecutionCatalogue
 

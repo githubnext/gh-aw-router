@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from contract_corpus import synthetic_table_document
 
-from gh_aw_router.contracts import API_VERSION
-from gh_aw_router.routing_table import RoutingTable, all_labels, label_key
+from gh_aw_router.routing_table import RoutingTable
 from gh_aw_router.service import GhAwRouterService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -34,18 +34,7 @@ def service() -> GhAwRouterService:
 
 @pytest.fixture
 def table_document() -> dict[str, Any]:
-    return {
-        "schema_version": 5,
-        "profile": {"goal": "cost", "mode": "balanced"},
-        "repository": "global",
-        "classification_choices": ["provider/fast", "provider/reasoning:medium"],
-        "rankings": [
-            {
-                "applies_to": [label_key(labels) for labels in all_labels()],
-                "choices": ["provider/fast", "provider/reasoning:medium"],
-            }
-        ],
-    }
+    return synthetic_table_document()
 
 
 @pytest.fixture
@@ -69,9 +58,6 @@ def synthetic_table_path(table_document: dict[str, Any], tmp_path: Path) -> Path
 def planning_payload() -> Callable[[str], dict[str, Any]]:
     def build(command: str) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "api_version": API_VERSION,
-            "repository": "acme/widgets",
-            "task_id": "task-1",
             "conversation": [{"role": "user", "parts": [{"text": "Fix this function"}]}],
             "models": [
                 {"id": "fast", "model": "provider/fast"},
