@@ -174,7 +174,7 @@ def export_archive(
     for case in cases:
         case["request_body"] = request_bytes(case).decode("utf-8")
     files = {
-        "README.md": (CORPUS_DIRECTORY / "README.md").read_text(encoding="utf-8").encode("utf-8"),
+        "README.md": (PROJECT_ROOT / "README.md").read_text(encoding="utf-8").encode("utf-8"),
         "cases.json": json_bytes(cases),
         "openapi.yaml": (PROJECT_ROOT / "openapi.yaml").read_text(encoding="utf-8").encode("utf-8"),
         "integration-contract.md": attachment,

@@ -178,7 +178,7 @@ class ClassifyRequest(PlanningRequest):
 class ClassifyResponse(StrictModel):
     system_prompt: NonEmptyString
     prompt: str
-    ranked_choices: tuple[ModelChoice, ...]
+    ranked_choices: Annotated[tuple[ModelChoice, ...], Field(min_length=1)]
 
 
 class ClassifierOutput(StrictModel):

@@ -5,6 +5,7 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -56,6 +57,27 @@ def test_package_metadata_matches_the_runtime() -> None:
         "Repository": repository,
     }
     assert f'org.opencontainers.image.source="{repository}"' in dockerfile
+
+
+@pytest.mark.parametrize("version", [gh_aw_router.__version__, "99.0.0"])
+def test_image_version_must_match_runtime(version: str) -> None:
+    dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    command = next(
+        line.removeprefix("RUN ") for line in dockerfile.splitlines() if '"$VERSION"' in line
+    )
+    arguments = shlex.split(command)
+    assert arguments[0] == "python"
+    assert arguments[-1] == "$VERSION"
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, *arguments[1:-1], version],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert (result.returncode == 0) is (version == gh_aw_router.__version__)
+    if result.returncode:
+        assert "VERSION must match the package version" in result.stderr
 
 
 def test_dependency_lock_uses_public_pypi() -> None:

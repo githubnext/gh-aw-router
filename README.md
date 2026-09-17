@@ -146,6 +146,12 @@ message, with no tools. Its expected output has this shape, defined by
 Forward the validated classifier output unchanged in `/route`'s `classification` field,
 as the routing example does. `/classify` itself returns a call plan, not this inferred result.
 The caller runs the classifier and passes its output to `/route`.
+Successful classification plans always contain at least one eligible choice.
+If no offered classifier choice is supported, `/classify` returns `422 invalid_request`.
+An empty successful ranking is not a signal to continue without classification.
+Before executing a plan, the caller must check the complete generated messages against
+the classifier model's context capacity, including output and reasoning allowance.
+Prompt escaping can expand the input. The HTTP request-size limit does not prove fit.
 
 Set `objective.mode` to `"auto"` to use `classification.mode`, which recommends `economy`,
 `balanced`, or `robust`. Auto falls back to `balanced` when `classification` is omitted or
@@ -219,6 +225,9 @@ Build from this directory. The Docker build context is self-contained.
 docker build --tag gh-aw-router:dev .
 ```
 
+The optional `VERSION` build argument must match the package version. A mismatch fails
+the build rather than publishing image metadata that disagrees with the CLI or service.
+
 The image bundles every published table under `/routing` and serves all six profiles. It runs as
 user `10001:10001` and needs no credentials or outbound network. This invocation uses a private
 network, a read-only filesystem, and no published host port. The service listens on port `8737`
@@ -249,10 +258,30 @@ To replace the bundled tables, add these options before the image name.
 
 ## Contract fixtures and artifacts
 
-[The portable corpus](tests/fixtures/routing-contract/README.md) covers all four endpoints
+[The portable corpus](tests/fixtures/routing-contract) covers all four endpoints
 using synthetic model identities and six distinguishable table profiles. The same reviewed
 request bytes run through HTTP adapter tests and the hardened Linux amd64 container tests.
 Classifier prompts are fixed expected data, not regenerated during tests.
+
+Endpoint files contain complete requests and reviewed expected responses. The test-only
+`response_file` reference shares an exact classifier response between cases. The exporter
+resolves it so consumers receive concrete JSON responses without a template language.
+
+The archive contains this README, `cases.json`, six synthetic profiles in `tables/`,
+`openapi.yaml`, the unchanged external `integration-contract.md`, and `manifest.json`.
+Cases name the method, path, expected status, and optional headers. Send each UTF-8
+`request_body` unchanged for wire replay. Default to `Content-Type: application/json`
+when headers are omitted. A 204 response has no body. `raw_request` marks malformed
+JSON, and `request_valid: false` marks a schema-invalid object.
+
+A case's optional `profiles` list restricts the table files loaded. Otherwise load all
+six. Mount the selected directory read-only and readable by UID/GID 10001. The fake model
+identities are test data, not a provider catalogue. Never send them to live providers.
+
+Compare successful responses exactly, including choice order, effort omission, and prompt
+strings. For errors, compare status and stable `code`, then validate the full envelope
+against OpenAPI. Fixture `detail` text is representative mock data, not a promise to
+preserve incidental diagnostic wording. Verify archive and manifest checksums before use.
 
 Export a corpus archive from a clean source checkout with Python 3.12 and development
 dependencies installed. Supply the reviewed integration attachment and its expected checksum.

@@ -154,7 +154,9 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
-          description: Invalid request or no eligible route.
+          description: >-
+            Request schema violation (invalid_json), unsupported operation
+            (invalid_request), or no eligible route (no_route).
           content:
             application/json:
               schema:
@@ -167,7 +169,7 @@ paths:
 components:
   responses:
     InvalidJson:
-      description: The body is malformed or does not match the closed request schema.
+      description: The body is malformed JSON.
       content:
         application/json:
           schema:
@@ -193,7 +195,9 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     InvalidRequest:
-      description: Decoded values are unsupported or cannot produce an operation.
+      description: >-
+        The body violates the closed request schema (invalid_json), or decoded
+        values are unsupported or cannot produce an operation (invalid_request).
       content:
         application/json:
           schema:
@@ -241,6 +245,7 @@ components:
           type: string
         ranked_choices:
           type: array
+          minItems: 1
           items:
             $ref: "#/components/schemas/ModelChoice"
 

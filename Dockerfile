@@ -37,6 +37,7 @@ RUN python -m pip install \
     && rm /tmp/requirements.lock
 
 COPY src /app/src
+RUN python -c "import sys; from gh_aw_router import __version__; sys.exit(0 if sys.argv[1] == __version__ else 'VERSION must match the package version')" "$VERSION"
 COPY routing /routing
 COPY LICENSE /usr/share/doc/gh-aw-router/LICENSE
 

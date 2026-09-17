@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from gh_aw_router import __version__
 from gh_aw_router.contracts import (
     ClassifyRequest,
+    ClassifyResponse,
     ErrorCode,
     ReasoningEffort,
     Role,
@@ -164,6 +165,13 @@ def test_portable_contract_corpus(case: dict[str, Any], tmp_path: Path) -> None:
             headers=case.get("headers", {"content-type": "application/json"}),
         )
     validate_case(case, response.status_code, response.content, load_openapi())
+
+
+def test_successful_classification_requires_an_eligible_choice() -> None:
+    payload = {"system_prompt": "fixture", "prompt": "fixture", "ranked_choices": []}
+    assert not _validator("ClassifyResponse").is_valid(payload)
+    with pytest.raises(ValidationError, match="ranked_choices"):
+        ClassifyResponse.model_validate_json(json.dumps(payload), strict=True)
 
 
 def test_portable_corpus_has_unique_cases_and_all_endpoints() -> None:
