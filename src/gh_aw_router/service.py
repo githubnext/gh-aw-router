@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from gh_aw_router import __version__
 from gh_aw_router.classification import create_classification_plan
 from gh_aw_router.contracts import (
-    API_VERSION,
     ClassifyRequest,
     ClassifyResponse,
     ExecutionCatalogue,
@@ -89,7 +88,6 @@ class GhAwRouterService:
         return ServiceCapabilities(
             name="gh-aw-router",
             version=__version__,
-            api_versions=(API_VERSION,),
             routing_profiles=tuple(
                 RoutingProfile(goal=profile.goal, mode=profile.mode)
                 for profile in PROFILES
@@ -100,12 +98,10 @@ class GhAwRouterService:
 
     def classify(self, request: ClassifyRequest) -> ClassifyResponse:
         """Create a classifier call plan for a validated request."""
-        self._validate_version(request.api_version)
         return create_classification_plan(request, self.primary_table.classification_ranking)
 
     def route(self, request: RouteRequest) -> RouteResponse:
         """Resolve automatic mode selection and rank choices using the selected table."""
-        self._validate_version(request.api_version)
         if request.objective.mode is RoutingMode.AUTO:
             mode = RoutingMode.BALANCED
             if (
@@ -121,11 +117,6 @@ class GhAwRouterService:
         if table is None:
             raise InvalidRequestError(f"routing profile is not served: {key}")
         return table.route(request)
-
-    @staticmethod
-    def _validate_version(api_version: str) -> None:
-        if api_version != API_VERSION:
-            raise InvalidRequestError(f"unsupported planning API version: {api_version}")
 
 
 def _execution_catalogue(pairs: tuple[ModelArm, ...]) -> ExecutionCatalogue:

@@ -26,7 +26,9 @@ uv run python -m pytest --run-docker -m docker
 Release tests require uv and may download dependencies. They build source and wheel archives,
 test an extracted source tree, and exercise a non-editable wheel installation. Docker tests
 require a running Linux daemon. They build one image, exercise all six bundled profiles, and
-check a read-only replacement table. Neither group runs by default. The CI workflow is
+check read-only replacement tables and the portable corpus on Linux amd64. Set
+`GH_AW_ROUTER_TEST_IMAGE` to test an already-built image instead of building and removing one.
+Neither group runs by default. The CI workflow is
 configured to run both groups separately.
 
 ## Project layout
@@ -56,10 +58,23 @@ Use the shared synthetic table and request fixtures in `tests/conftest.py` for g
 service, and transport tests. Reserve the bundled-table `service` fixture for release-data and
 example integration checks so ranking refreshes do not affect unrelated behavior tests.
 
-API version, package version, and routing-table schema version have different lifecycles.
-Breaking request changes require a new API version and migration notes. Public contracts and
-table helpers are also used by the separate training package. Check those callers when changing
-shared contracts.
+The HTTP contract follows the router release. There is no API-version request field or
+negotiation layer. Review breaking changes with affected consumers, include migration notes,
+and test the client, immutable image, OpenAPI document, and corpus as one release combination.
+Keep the table format marker because files and mounts can change independently of the image.
+Public contracts and table helpers are also used by the separate training package. Check those
+callers when changing shared contracts.
+
+The portable cases live in [tests/fixtures/routing-contract](tests/fixtures/routing-contract).
+Keep complete requests and reviewed expected responses. Tests and the source-only exporter
+must not derive expectations from the current service. Review classifier prompt changes as
+contract fixture changes. Invalid non-null classifier output belongs in rejection cases;
+caller-authorized degradation uses omitted or null classification.
+
+The [artifact preview](.github/workflows/artifact-preview.yml) is manual and unprivileged.
+It requires a checksum-verified integration attachment and never publishes registry images
+or releases. Keep release publication and credentialed attestations in separately reviewed,
+explicitly permissioned jobs. Do not execute untrusted PR code through `pull_request_target`.
 
 ## Dependencies and routing data
 

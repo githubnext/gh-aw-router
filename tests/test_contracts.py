@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from gh_aw_router.contracts import (
-    API_VERSION,
     ClassifyRequest,
     Labels,
     RouteRequest,
@@ -144,9 +143,21 @@ def test_repository_requires_owner_and_name(repository: str) -> None:
         ClassifyRequest.model_validate_json(json.dumps(payload), strict=True)
 
 
+@pytest.mark.parametrize("model", [ClassifyRequest, RouteRequest])
+def test_planning_contract_has_no_version_negotiation(
+    model: type[ClassifyRequest] | type[RouteRequest],
+) -> None:
+    payload = _planning_payload(model)
+    request = model.model_validate_json(json.dumps(payload), strict=True)
+    assert "api_version" not in request.model_dump()
+    payload["api_version"] = "0.2.0"
+    with pytest.raises(ValidationError, match="api_version") as error:
+        model.model_validate_json(json.dumps(payload), strict=True)
+    assert error.value.errors()[0]["type"] == "extra_forbidden"
+
+
 def _planning_payload(model: type[ClassifyRequest] | type[RouteRequest]) -> dict[str, object]:
     payload: dict[str, object] = {
-        "api_version": API_VERSION,
         "repository": "acme/widgets",
         "task_id": "issue-123",
         "conversation": [],

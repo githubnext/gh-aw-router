@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import os
 import re
@@ -15,6 +17,14 @@ from urllib.parse import urlsplit
 
 import pytest
 import yaml
+from contract_corpus import (
+    export_archive,
+    load_cases,
+    request_bytes,
+    source_identity,
+    validate_case,
+)
+from fastapi.testclient import TestClient
 from packaging.specifiers import SpecifierSet
 
 import gh_aw_router
@@ -125,6 +135,31 @@ def test_package_declares_inline_type_information() -> None:
     assert (package_directory / "py.typed").is_file()
 
 
+def test_artifact_preview_is_manual_and_unprivileged() -> None:
+    path = PROJECT_ROOT / ".github/workflows/artifact-preview.yml"
+    workflow = yaml.safe_load(path.read_bytes())
+    assert set(workflow["on"]) == {"workflow_dispatch"}
+    assert workflow["permissions"] == {"contents": "read"}
+    assert set(workflow["on"]["workflow_dispatch"]["inputs"]) == {
+        "integration_contract_url",
+        "integration_contract_sha256",
+    }
+    job = workflow["jobs"]["preview"]
+    assert job["runs-on"] == "ubuntu-latest"
+    assert "permissions" not in job
+    commands = "\n".join(step.get("run", "") for step in job["steps"])
+    assert "--platform linux/amd64" in commands
+    assert "pytest --run-docker -m docker" in commands
+    assert "--integration-contract-sha256" in commands
+    assert "--development" in commands
+    assert "docker image save" in commands
+    assert "docker push" not in commands
+    assert "secrets." not in path.read_text(encoding="utf-8")
+    for step in job["steps"]:
+        if "uses" in step:
+            assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", step["uses"])
+
+
 def test_documentation_links_stay_inside_the_project() -> None:
     documents = PROJECT_ROOT.glob("*.md")
     for document in documents:
@@ -134,6 +169,129 @@ def test_documentation_links_stay_inside_the_project() -> None:
             path = (document.parent / target.split("#", 1)[0]).resolve()
             assert path.is_relative_to(PROJECT_ROOT), (document, target)
             assert path.exists(), (document, target)
+
+
+@pytest.mark.parametrize("newline", [b"\n", b"\r\n"], ids=["lf", "crlf"])
+def test_contract_archive_is_reproducible_and_replays_reviewed_cases(
+    tmp_path: Path, newline: bytes
+) -> None:
+    attachment = b"# Synthetic integration contract\n\nContract revision: `test/v1`.\n".replace(
+        b"\n", newline
+    )
+    contract = tmp_path / "contract.md"
+    contract.write_bytes(attachment)
+    checksum = hashlib.sha256(attachment).hexdigest()
+    exported = export_archive(contract, checksum, development=True)
+    assert exported == export_archive(contract, checksum, development=True)
+    assert exported[4:8] == bytes(4)
+    with tarfile.open(fileobj=io.BytesIO(exported), mode="r:gz") as archive:
+        assert archive.getnames() == sorted(archive.getnames())
+        files = {}
+        for entry in archive.getmembers():
+            assert entry.isfile()
+            assert (entry.uid, entry.gid, entry.uname, entry.gname, entry.mtime) == (
+                0,
+                0,
+                "",
+                "",
+                0,
+            )
+            assert entry.mode == 0o644
+            stream = archive.extractfile(entry)
+            assert stream is not None
+            files[entry.name] = stream.read()
+    manifest = json.loads(files.pop("manifest.json"))
+    assert manifest["archive_format"] == 1
+    assert manifest["router_version"] == gh_aw_router.__version__
+    assert manifest["routing_table_schema"] == 5
+    assert manifest["source"]["development"] is True
+    assert manifest["integration_contract_revision"] == "test/v1"
+    assert manifest["files"] == {
+        name: hashlib.sha256(data).hexdigest() for name, data in files.items()
+    }
+    assert files["integration-contract.md"] == attachment
+    assert files["openapi.yaml"] == (PROJECT_ROOT / "openapi.yaml").read_text(
+        encoding="utf-8"
+    ).encode("utf-8")
+    assert len([name for name in files if name.startswith("tables/")]) == 6
+    openapi = yaml.safe_load(files["openapi.yaml"])
+    cases = json.loads(files["cases.json"])
+    originals = {case["id"]: case for case in load_cases()}
+    assert len(cases) == len(originals)
+    for case in cases:
+        assert request_bytes(case) == request_bytes(originals[case["id"]])
+        assert "response_file" not in case
+        tables = tmp_path / case["id"]
+        tables.mkdir()
+        for name in case.get(
+            "profiles",
+            [name.removeprefix("tables/") for name in files if name.startswith("tables/")],
+        ):
+            (tables / name).write_bytes(files[f"tables/{name}"])
+        with TestClient(create_app(GhAwRouterService.load(tables))) as client:
+            response = client.request(
+                case["method"],
+                case["path"],
+                content=request_bytes(case),
+                headers=case.get("headers", {"content-type": "application/json"}),
+            )
+        validate_case(case, response.status_code, response.content, openapi)
+
+
+def test_contract_archive_rejects_wrong_attachment_identity(tmp_path: Path) -> None:
+    contract = tmp_path / "contract.md"
+    contract.write_bytes(b"unidentified attachment")
+    with pytest.raises(ValueError, match="checksum"):
+        export_archive(contract, "0" * 64, development=True)
+    with pytest.raises(ValueError, match="revision"):
+        export_archive(
+            contract, hashlib.sha256(contract.read_bytes()).hexdigest(), development=True
+        )
+
+
+def test_contract_archive_requires_explicit_development_provenance(tmp_path: Path) -> None:
+    assert source_identity(tmp_path, development=True) == {
+        "sha": None,
+        "dirty": None,
+        "development": True,
+    }
+    with pytest.raises(ValueError, match="clean, identified"):
+        source_identity(tmp_path, development=False)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="Git required for source provenance test")
+def test_contract_archive_distinguishes_clean_and_dirty_source(tmp_path: Path) -> None:
+    _run(["git", "init", "--quiet", str(tmp_path)], tmp_path)
+    _run(
+        [
+            "git",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--allow-empty",
+            "--message",
+            "Synthetic source",
+        ],
+        tmp_path,
+    )
+    expected = _run(["git", "rev-parse", "HEAD"], tmp_path).stdout.strip()
+    assert source_identity(tmp_path, development=False) == {
+        "sha": expected,
+        "dirty": False,
+        "development": False,
+    }
+    (tmp_path / "untracked.txt").write_text("changed", encoding="utf-8")
+    with pytest.raises(ValueError, match="clean, identified"):
+        source_identity(tmp_path, development=False)
+    assert source_identity(tmp_path, development=True) == {
+        "sha": expected,
+        "dirty": True,
+        "development": True,
+    }
 
 
 @pytest.mark.release
@@ -180,10 +338,14 @@ def release_artifacts(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, P
         ".gitignore",
         ".gitattributes",
         ".github/workflows/ci.yml",
+        ".github/workflows/artifact-preview.yml",
         "CONTRIBUTING.md",
         "SECURITY.md",
         "CODE_OF_CONDUCT.md",
         "README.md",
+        "tests/contract_corpus.py",
+        "tests/fixtures/routing-contract/classify-response.json",
+        "tests/fixtures/routing-contract/route.json",
         "routing/cost-balanced.json",
         "routing/cost-speed-robust.json",
     ):

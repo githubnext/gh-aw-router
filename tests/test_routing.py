@@ -7,7 +7,6 @@ from typing import Any
 import pytest
 
 from gh_aw_router.contracts import (
-    API_VERSION,
     Message,
     ModelCandidate,
     ReasoningEffort,
@@ -45,7 +44,6 @@ def _route_request(
     text: str = "Fix this function",
 ) -> RouteRequest:
     return RouteRequest(
-        api_version=API_VERSION,
         repository="acme/widgets",
         task_id="task-1",
         objective=RoutingObjective(goal=RoutingGoal.COST, mode=RoutingMode.BALANCED),

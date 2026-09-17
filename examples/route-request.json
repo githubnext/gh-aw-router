@@ -1,5 +1,4 @@
 {
-  "api_version": "0.2.0",
   "repository": "acme/widgets",
   "task_id": "issue-123",
   "objective": {

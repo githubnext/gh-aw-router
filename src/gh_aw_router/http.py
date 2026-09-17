@@ -16,9 +16,9 @@ from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.types import Message as AsgiMessage
 
+from gh_aw_router import __version__
 from gh_aw_router.classification import ClassificationError
 from gh_aw_router.contracts import (
-    API_VERSION,
     ClassifyRequest,
     ClassifyResponse,
     ErrorCode,
@@ -229,7 +229,7 @@ def create_app(service: GhAwRouterService) -> FastAPI:
     """
     app = FastAPI(
         title="gh-aw-router HTTP API",
-        version=API_VERSION,
+        version=__version__,
         description=(
             "Stateless classification planning and model routing for trusted host adapters."
         ),

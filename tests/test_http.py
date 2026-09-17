@@ -14,8 +14,8 @@ from fastapi.testclient import TestClient
 from starlette.exceptions import HTTPException
 from starlette.types import Message, Receive, Scope, Send
 
+from gh_aw_router import __version__
 from gh_aw_router.cli import run
-from gh_aw_router.contracts import API_VERSION
 from gh_aw_router.http import MAX_BODY_BYTES, MAX_DETAIL_CHARS, DeadlineMiddleware, create_app
 from gh_aw_router.service import GhAwRouterService
 
@@ -33,7 +33,8 @@ def test_health_and_capabilities(client: TestClient) -> None:
     response = client.get("/capabilities")
     assert response.status_code == 200
     body = response.json()
-    assert body["api_versions"] == [API_VERSION]
+    assert body["version"] == __version__
+    assert "api_versions" not in body
     assert any(
         model["model"] == "provider/reasoning" for model in body["execution_catalogue"]["models"]
     )
@@ -53,7 +54,6 @@ def test_typed_request_errors(client: TestClient) -> None:
     unsupported = client.post(
         "/classify",
         json={
-            "api_version": "99.0.0",
             "repository": "acme/widgets",
             "task_id": "task-1",
             "conversation": [],
@@ -74,7 +74,6 @@ def test_typed_request_errors(client: TestClient) -> None:
     unknown_field = client.post(
         "/classify",
         json={
-            "api_version": API_VERSION,
             "repository": "acme/widgets",
             "task_id": "task-1",
             "conversation": [],
@@ -87,7 +86,7 @@ def test_typed_request_errors(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize("command", ["classify", "route"])
-def test_retired_api_version_is_rejected(
+def test_requests_do_not_accept_version_negotiation(
     client: TestClient, planning_payload: Callable[[str], dict[str, Any]], command: str
 ) -> None:
     payload = planning_payload(command)
@@ -96,15 +95,14 @@ def test_retired_api_version_is_rejected(
     response = client.post(f"/{command}", json=payload)
 
     assert response.status_code == 422
-    assert response.json()["code"] == "invalid_request"
-    assert "unsupported planning API version" in response.json()["detail"]
+    assert response.json()["code"] == "invalid_json"
+    assert "api_version" in response.json()["detail"]
 
 
 def test_no_route_and_body_limit_fail_closed(client: TestClient) -> None:
     no_route = client.post(
         "/route",
         json={
-            "api_version": API_VERSION,
             "repository": "acme/widgets",
             "task_id": "task-1",
             "objective": {"goal": "cost", "mode": "balanced"},
@@ -139,7 +137,6 @@ def test_service_advertises_and_enforces_its_loaded_profiles(mode: str) -> None:
     capabilities = client.get("/capabilities").json()
     assert capabilities["routing_profiles"] == [{"goal": "cost", "mode": mode}]
     request = {
-        "api_version": API_VERSION,
         "repository": "acme/widgets",
         "task_id": "task-1",
         "conversation": [{"role": "user", "parts": [{"text": "Fix this function"}]}],
@@ -178,7 +175,6 @@ def test_missing_reasoning_effort_returns_the_operation_error(
     client: TestClient, path: str, code: str
 ) -> None:
     request = {
-        "api_version": API_VERSION,
         "repository": "acme/widgets",
         "task_id": "task-1",
         "conversation": [{"role": "user", "parts": [{"text": "Fix this function"}]}],

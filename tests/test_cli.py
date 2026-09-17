@@ -14,7 +14,6 @@ import pytest
 
 import gh_aw_router.cli as cli
 from gh_aw_router.cli import run
-from gh_aw_router.contracts import API_VERSION
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,9 +26,7 @@ def common_args() -> list[str]:
 
 
 def load_request(command: str) -> dict[str, object]:
-    request = json.loads((PROJECT_ROOT / f"examples/{command}-request.json").read_bytes())
-    request["api_version"] = API_VERSION
-    return request
+    return json.loads((PROJECT_ROOT / f"examples/{command}-request.json").read_bytes())
 
 
 @pytest.mark.parametrize("command", ["classify", "route"])

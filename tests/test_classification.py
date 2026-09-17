@@ -15,7 +15,6 @@ from gh_aw_router.classification import (
     create_classification_plan,
 )
 from gh_aw_router.contracts import (
-    API_VERSION,
     ClassifierOutput,
     ClassifyRequest,
     Message,
@@ -93,7 +92,6 @@ def test_classifier_output_rejects_removed_critical_mode() -> None:
 
 def test_classification_requires_authored_user_text() -> None:
     request = ClassifyRequest(
-        api_version=API_VERSION,
         repository="acme/widgets",
         task_id="task-1",
         conversation=(
@@ -109,7 +107,6 @@ def test_classification_requires_authored_user_text() -> None:
 
 def test_classification_requires_an_offered_routing_identity() -> None:
     request = ClassifyRequest(
-        api_version=API_VERSION,
         repository="acme/widgets",
         task_id="task-1",
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Explain this"),)),),
@@ -125,7 +122,6 @@ def test_classification_preserves_exact_efforts_and_effort_free_models(
     effort: ReasoningEffort,
 ) -> None:
     request = ClassifyRequest(
-        api_version=API_VERSION,
         repository="acme/widgets",
         task_id="task-1",
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Classify this"),)),),

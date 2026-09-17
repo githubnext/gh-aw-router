@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Any, Final, Self
+from typing import Annotated, Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, model_validator
-
-API_VERSION: Final = "0.2.0"
 
 NonEmptyString = Annotated[str, Field(min_length=1, strict=True)]
 ProviderModelId = Annotated[
@@ -160,7 +158,6 @@ class PlanningRequest(StrictModel):
     The service validates these identifiers but does not store or index requests.
     """
 
-    api_version: StrictStr
     repository: Annotated[str, Field(pattern=r"^[^/\s]+/[^/\s]+$", strict=True)]
     task_id: Annotated[str, Field(min_length=1, pattern=r"\S", strict=True)]
 
@@ -221,7 +218,6 @@ class ExecutionCatalogue(StrictModel):
 class ServiceCapabilities(StrictModel):
     name: StrictStr
     version: StrictStr
-    api_versions: tuple[StrictStr, ...]
     routing_profiles: Annotated[tuple[RoutingProfile, ...], Field(min_length=1)]
     execution_catalogue: ExecutionCatalogue
 
