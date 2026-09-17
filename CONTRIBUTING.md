@@ -71,9 +71,7 @@ must not derive expectations from the current service. Review classifier prompt 
 contract fixture changes. Invalid non-null classifier output belongs in rejection cases;
 caller-authorized degradation uses omitted or null classification.
 
-The [artifact preview](.github/workflows/artifact-preview.yml) is manual and unprivileged.
-It requires a checksum-verified integration attachment and never publishes registry images
-or releases. Keep release publication and credentialed attestations in separately reviewed,
+Keep release publication and credentialed attestations in separately reviewed,
 explicitly permissioned jobs. Do not execute untrusted PR code through `pull_request_target`.
 
 ## Dependencies and routing data

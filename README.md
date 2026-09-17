@@ -271,11 +271,8 @@ checkout requires `--development` and is explicitly marked as non-release proven
 Repeated exports with the same inputs and source state produce identical bytes. Repository
 OpenAPI text uses LF in the archive, while the external attachment retains its original bytes.
 
-The manual [Artifact Preview workflow](.github/workflows/artifact-preview.yml) accepts a public
-HTTPS attachment URL and checksum, tests the normal image, and uploads a development corpus
-archive and Docker image archive. It has no registry or release write permissions. Ordinary
-PR CI runs corpus, packaging, and native Linux amd64 Docker checks without provider credentials.
-Preview uploads expire after seven days and are not a supported-release archive.
+Ordinary PR CI runs corpus, packaging, and native Linux amd64 Docker checks without
+provider credentials. Use the exporter above to create a local contract archive.
 
 Publication requires a separate reviewed source and registry authorization. A deployment pin
 has the form `<approved-registry>/<repository>:<reviewed-tag>@sha256:<manifest-digest>`.

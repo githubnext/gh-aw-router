@@ -135,31 +135,6 @@ def test_package_declares_inline_type_information() -> None:
     assert (package_directory / "py.typed").is_file()
 
 
-def test_artifact_preview_is_manual_and_unprivileged() -> None:
-    path = PROJECT_ROOT / ".github/workflows/artifact-preview.yml"
-    workflow = yaml.safe_load(path.read_bytes())
-    assert set(workflow["on"]) == {"workflow_dispatch"}
-    assert workflow["permissions"] == {"contents": "read"}
-    assert set(workflow["on"]["workflow_dispatch"]["inputs"]) == {
-        "integration_contract_url",
-        "integration_contract_sha256",
-    }
-    job = workflow["jobs"]["preview"]
-    assert job["runs-on"] == "ubuntu-latest"
-    assert "permissions" not in job
-    commands = "\n".join(step.get("run", "") for step in job["steps"])
-    assert "--platform linux/amd64" in commands
-    assert "pytest --run-docker -m docker" in commands
-    assert "--integration-contract-sha256" in commands
-    assert "--development" in commands
-    assert "docker image save" in commands
-    assert "docker push" not in commands
-    assert "secrets." not in path.read_text(encoding="utf-8")
-    for step in job["steps"]:
-        if "uses" in step:
-            assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", step["uses"])
-
-
 def test_documentation_links_stay_inside_the_project() -> None:
     documents = PROJECT_ROOT.glob("*.md")
     for document in documents:
@@ -338,7 +313,6 @@ def release_artifacts(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, P
         ".gitignore",
         ".gitattributes",
         ".github/workflows/ci.yml",
-        ".github/workflows/artifact-preview.yml",
         "CONTRIBUTING.md",
         "SECURITY.md",
         "CODE_OF_CONDUCT.md",
