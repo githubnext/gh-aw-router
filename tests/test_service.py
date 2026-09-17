@@ -60,8 +60,6 @@ def test_published_tables_serve_every_profile(service: GhAwRouterService) -> Non
     pair = service.primary_table.pairs[0]
     for profile in PROFILES:
         request = RouteRequest(
-            repository="acme/widgets",
-            task_id="task-1",
             objective=profile,
             conversation=(Message(role=Role.USER, parts=(TextPart(text="Fix this"),)),),
             models=(ModelCandidate(id="only", model=pair.model, effort=pair.effort),),
@@ -173,8 +171,6 @@ def test_auto_does_not_substitute_for_an_unserved_profile(
 
 def test_unserved_objectives_are_invalid_requests(synthetic_service: GhAwRouterService) -> None:
     request = RouteRequest(
-        repository="acme/widgets",
-        task_id="task-1",
         objective=RoutingObjective(goal=RoutingGoal.COST_SPEED, mode=RoutingMode.ROBUST),
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Fix this"),)),),
         models=(ModelCandidate(id="fast", model="provider/fast"),),
@@ -212,8 +208,6 @@ def test_classification_respects_embedded_preference_order(
         for index, pair in enumerate(table.classification_ranking)
     )
     request = ClassifyRequest(
-        repository="acme/widgets",
-        task_id="task-1",
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Explain this"),)),),
         models=tuple(reversed(expected)),
     )
@@ -235,8 +229,6 @@ def test_classification_uses_balanced_cell_with_full_fallbacks(
     )
     offered = (offered[0], offered[0].model_copy(update={"id": "alias"}), *offered[1:])
     request = ClassifyRequest(
-        repository="acme/widgets",
-        task_id="task-1",
         models=offered,
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Classify this request"),)),),
     )

@@ -297,7 +297,6 @@ choice = {{'id': 'offered', 'model': model['model']}}
 if model['efforts']:
     choice['effort'] = model['efforts'][0]
 request = {{
-    'repository': 'acme/widgets', 'task_id': 'container-test',
     'conversation': [{{'role': 'user', 'parts': [{{'text': 'Fix this function'}}]}}],
     'models': [choice],
 }}
@@ -309,7 +308,7 @@ for profile in {profiles!r}:
 request['objective'] = {profiles[0]!r}
 status, no_route = post('/route', dict(request, models=[]))
 assert status == 422 and no_route['code'] == 'no_route'
-del request['task_id']
+del request['conversation']
 status, invalid = post('/route', request)
 assert status == 422 and invalid['code'] == 'invalid_json'
 """

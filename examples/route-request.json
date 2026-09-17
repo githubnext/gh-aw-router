@@ -1,6 +1,4 @@
 {
-  "repository": "acme/widgets",
-  "task_id": "issue-123",
   "objective": {
     "goal": "cost",
     "mode": "auto"

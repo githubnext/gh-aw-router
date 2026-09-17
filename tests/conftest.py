@@ -58,8 +58,6 @@ def synthetic_table_path(table_document: dict[str, Any], tmp_path: Path) -> Path
 def planning_payload() -> Callable[[str], dict[str, Any]]:
     def build(command: str) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "repository": "acme/widgets",
-            "task_id": "task-1",
             "conversation": [{"role": "user", "parts": [{"text": "Fix this function"}]}],
             "models": [
                 {"id": "fast", "model": "provider/fast"},

@@ -208,8 +208,6 @@ def test_nullable_request_fields_match_committed_schema(
     model: type[ClassifyRequest] | type[RouteRequest],
 ) -> None:
     payload: dict[str, Any] = {
-        "repository": "acme/widgets",
-        "task_id": "issue-123",
         "conversation": [],
         "models": [{"id": "plain", "model": "provider/plain", "effort": None}],
     }
@@ -283,23 +281,19 @@ def test_invalid_classifier_output_is_rejected_by_runtime_and_document(
 
 @pytest.mark.parametrize("model", [ClassifyRequest, RouteRequest])
 @pytest.mark.parametrize("field", ["repository", "task_id"])
-@pytest.mark.parametrize("value", [None, "", " ", 123])
-def test_invalid_metadata_is_rejected_by_runtime_and_document(
+@pytest.mark.parametrize("value", [None, "", " ", 123, "acme/widgets"])
+def test_execution_metadata_is_rejected_by_runtime_and_document(
     model: type[ClassifyRequest] | type[RouteRequest], field: str, value: object
 ) -> None:
     payload = {
-        "repository": "acme/widgets",
-        "task_id": "issue-123",
         "conversation": [],
         "models": [],
     }
     if model is RouteRequest:
         payload["objective"] = {"goal": "cost", "mode": "balanced"}
-    del payload[field]
     validator = _validator(model.__name__)
-    assert not validator.is_valid(payload)
-    with pytest.raises(ValidationError):
-        model.model_validate(payload)
+    assert validator.is_valid(payload)
+    model.model_validate(payload)
     payload[field] = value
     assert not validator.is_valid(payload)
     with pytest.raises(ValidationError):

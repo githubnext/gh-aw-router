@@ -17,8 +17,8 @@ info:
     /capabilities lists the fixed profiles the loaded tables serve.
     Schema-5 tables each carry one fixed profile.
     Older schemas are rejected. Unserved profiles return invalid_request without fallback.
-    Both planning requests require repository and task_id as caller metadata.
-    These identifiers do not select a routing policy or cause data to be stored.
+    Planning requests contain only decision inputs. Execution identity and
+    outcome correlation remain with the caller; the router stores no task state.
     Every application error uses the Error envelope, including unknown paths,
     which return 404 with code not_found. Under overload the server may return a
     bare 503 before the application runs.
@@ -219,12 +219,8 @@ components:
     ClassifyRequest:
       type: object
       additionalProperties: false
-      required: [repository, task_id, conversation, models]
+      required: [conversation, models]
       properties:
-        repository:
-          $ref: "#/components/schemas/Repository"
-        task_id:
-          $ref: "#/components/schemas/TaskId"
         conversation:
           $ref: "#/components/schemas/Conversation"
         models:
@@ -262,12 +258,8 @@ components:
     RouteRequest:
       type: object
       additionalProperties: false
-      required: [repository, task_id, objective, conversation]
+      required: [objective, conversation]
       properties:
-        repository:
-          $ref: "#/components/schemas/Repository"
-        task_id:
-          $ref: "#/components/schemas/TaskId"
         objective:
           $ref: "#/components/schemas/RoutingObjective"
         conversation:
@@ -289,17 +281,6 @@ components:
           description: Offered candidates. Every id must be unique.
           items:
             $ref: "#/components/schemas/ModelCandidate"
-
-    Repository:
-      type: string
-      pattern: '^[^/\s]+/[^/\s]+$'
-      description: GitHub repository in owner/repo form. Caller metadata, not policy selection.
-
-    TaskId:
-      type: string
-      minLength: 1
-      pattern: '\S'
-      description: Opaque task identifier, stable across classification, routing, and retries.
 
     RouteResponse:
       type: object

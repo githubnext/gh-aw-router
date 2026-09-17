@@ -44,8 +44,6 @@ def _route_request(
     text: str = "Fix this function",
 ) -> RouteRequest:
     return RouteRequest(
-        repository="acme/widgets",
-        task_id="task-1",
         objective=RoutingObjective(goal=RoutingGoal.COST, mode=RoutingMode.BALANCED),
         current_id=current_id,
         conversation=(Message(role=Role.USER, parts=(TextPart(text=text),)),),
@@ -212,13 +210,6 @@ def test_route_ignores_unknown_model_identities(routing_table: RoutingTable) -> 
     too_small = request.models[1].model_copy(update={"context_window": 1})
     with pytest.raises(NoRouteError, match="no eligible"):
         routing_table.route(request.model_copy(update={"models": (request.models[0], too_small)}))
-
-
-def test_request_metadata_does_not_select_a_repository_policy(routing_table: RoutingTable) -> None:
-    request = _route_request(ModelCandidate(id="fast", model="provider/fast"))
-    other_task = request.model_copy(update={"repository": "another/repo", "task_id": "task-2"})
-
-    assert routing_table.route(other_task) == routing_table.route(request)
 
 
 @pytest.mark.parametrize("profile", ["economy", "balanced", "robust"])

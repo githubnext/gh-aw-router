@@ -54,8 +54,6 @@ def test_typed_request_errors(client: TestClient) -> None:
     unsupported = client.post(
         "/classify",
         json={
-            "repository": "acme/widgets",
-            "task_id": "task-1",
             "conversation": [],
             "models": [],
         },
@@ -74,8 +72,6 @@ def test_typed_request_errors(client: TestClient) -> None:
     unknown_field = client.post(
         "/classify",
         json={
-            "repository": "acme/widgets",
-            "task_id": "task-1",
             "conversation": [],
             "models": [],
             "extra": True,
@@ -86,25 +82,24 @@ def test_typed_request_errors(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize("command", ["classify", "route"])
-def test_requests_do_not_accept_version_negotiation(
-    client: TestClient, planning_payload: Callable[[str], dict[str, Any]], command: str
+@pytest.mark.parametrize("field", ["api_version", "repository", "task_id"])
+def test_requests_do_not_accept_retired_metadata(
+    client: TestClient, planning_payload: Callable[[str], dict[str, Any]], command: str, field: str
 ) -> None:
     payload = planning_payload(command)
-    payload["api_version"] = "0.1.0"
+    payload[field] = "unused"
 
     response = client.post(f"/{command}", json=payload)
 
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_json"
-    assert "api_version" in response.json()["detail"]
+    assert field in response.json()["detail"]
 
 
 def test_no_route_and_body_limit_fail_closed(client: TestClient) -> None:
     no_route = client.post(
         "/route",
         json={
-            "repository": "acme/widgets",
-            "task_id": "task-1",
             "objective": {"goal": "cost", "mode": "balanced"},
             "conversation": [{"role": "user", "parts": [{"text": "Fix this function"}]}],
             "classification": {
@@ -137,8 +132,6 @@ def test_service_advertises_and_enforces_its_loaded_profiles(mode: str) -> None:
     capabilities = client.get("/capabilities").json()
     assert capabilities["routing_profiles"] == [{"goal": "cost", "mode": mode}]
     request = {
-        "repository": "acme/widgets",
-        "task_id": "task-1",
         "conversation": [{"role": "user", "parts": [{"text": "Fix this function"}]}],
         "models": [{"id": "luna", "model": "github-copilot/gpt-5.6-luna", "effort": "medium"}],
     }
@@ -175,8 +168,6 @@ def test_missing_reasoning_effort_returns_the_operation_error(
     client: TestClient, path: str, code: str
 ) -> None:
     request = {
-        "repository": "acme/widgets",
-        "task_id": "task-1",
         "conversation": [{"role": "user", "parts": [{"text": "Fix this function"}]}],
         "models": [{"id": "reasoning", "model": "provider/reasoning"}],
     }
@@ -330,8 +321,6 @@ def test_request_errors_have_bounded_printable_details(client: TestClient) -> No
         "/classify",
         json={
             "api_version": "x" * (MAX_DETAIL_CHARS * 2),
-            "repository": "acme/widgets",
-            "task_id": "task-1",
             "conversation": [],
             "models": [],
         },
@@ -464,7 +453,7 @@ def test_cli_and_http_share_json_decoding(
         text = "\ud800"
     payload["conversation"][-1]["parts"] = [{"text": text}]
     if case == "invalid-field":
-        payload["task_id"] = 123
+        payload["conversation"][-1]["role"] = 123
     raw = json.dumps(payload)
     if case == "nested":
         nested: object = 0

@@ -77,11 +77,11 @@ Routing ignores model-effort pairs absent from the table and returns `no_route` 
 supported, context-eligible choices remain. Unsupported objectives and malformed requests
 are still rejected. Neither operation calls a provider or invents a fallback choice.
 
-Both planning requests require `repository` in `owner/repo` form, a nonblank `task_id`,
-and a `conversation` holding at least one user message with
-nonblank text. Keep the repository and task identifiers stable for one task across
-classification, routing, and retries. They identify the caller's work but do not select a
-policy or create stored state.
+Both planning requests require a `conversation` holding at least one user message with
+nonblank text. Requests contain only decision inputs. The caller retains execution
+identity for accounting and outcome correlation. The router stores no task history.
+Remove `repository` and `task_id` from older client requests. Both fields are rejected,
+not ignored. Routing-table `repository` metadata is separate and remains unchanged.
 
 Requests do not negotiate an independent API version. When updating an older client, remove
 `api_version` from requests and stop expecting `api_versions` in capabilities. The removed

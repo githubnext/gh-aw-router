@@ -122,25 +122,17 @@ def test_top_level_labels_are_rejected(
 
 @pytest.mark.parametrize("model", [ClassifyRequest, RouteRequest])
 @pytest.mark.parametrize("field", ["repository", "task_id"])
-@pytest.mark.parametrize("value", [None, "", " ", 123])
-def test_planning_metadata_is_required_and_nonblank(
+@pytest.mark.parametrize("value", [None, "", " ", 123, "acme/widgets"])
+def test_planning_requests_reject_execution_metadata(
     model: type[ClassifyRequest] | type[RouteRequest], field: str, value: object
 ) -> None:
     payload = _planning_payload(model)
-    del payload[field]
-    with pytest.raises(ValidationError, match=field):
-        model.model_validate_json(json.dumps(payload), strict=True)
+    request = model.model_validate_json(json.dumps(payload), strict=True)
+    assert field not in request.model_dump()
     payload[field] = value
-    with pytest.raises(ValidationError, match=field):
+    with pytest.raises(ValidationError, match=field) as error:
         model.model_validate_json(json.dumps(payload), strict=True)
-
-
-@pytest.mark.parametrize("repository", ["global", "owner/repo/extra", "https://github.com/a/b"])
-def test_repository_requires_owner_and_name(repository: str) -> None:
-    payload = _planning_payload(ClassifyRequest)
-    payload["repository"] = repository
-    with pytest.raises(ValidationError, match="repository"):
-        ClassifyRequest.model_validate_json(json.dumps(payload), strict=True)
+    assert error.value.errors()[0]["type"] == "extra_forbidden"
 
 
 @pytest.mark.parametrize("model", [ClassifyRequest, RouteRequest])
@@ -158,8 +150,6 @@ def test_planning_contract_has_no_version_negotiation(
 
 def _planning_payload(model: type[ClassifyRequest] | type[RouteRequest]) -> dict[str, object]:
     payload: dict[str, object] = {
-        "repository": "acme/widgets",
-        "task_id": "issue-123",
         "conversation": [],
         "models": [],
     }

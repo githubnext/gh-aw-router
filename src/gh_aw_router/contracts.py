@@ -152,20 +152,14 @@ class RoutingObjective(RoutingProfile):
 
 
 class PlanningRequest(StrictModel):
-    """Identify the caller's GitHub repository and task without selecting a policy.
+    """Task text shared by stateless classification and routing requests."""
 
-    Keep task_id stable across classification, routing, and retries for one task.
-    The service validates these identifiers but does not store or index requests.
-    """
-
-    repository: Annotated[str, Field(pattern=r"^[^/\s]+/[^/\s]+$", strict=True)]
-    task_id: Annotated[str, Field(min_length=1, pattern=r"\S", strict=True)]
+    conversation: tuple[Message, ...]
 
 
 class ClassifyRequest(PlanningRequest):
     """Conversation and exact dispatch choices available for classification."""
 
-    conversation: tuple[Message, ...]
     models: tuple[ModelChoice, ...]
 
     @model_validator(mode="after")
@@ -190,7 +184,6 @@ class RouteRequest(PlanningRequest):
     """Task context, optional classifier output, and exact dispatch candidates."""
 
     objective: RoutingObjective
-    conversation: tuple[Message, ...]
     current_id: NonEmptyString | None = None
     classification: ClassifierOutput | None = None
     models: tuple[ModelCandidate, ...] = ()

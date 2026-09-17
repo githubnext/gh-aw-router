@@ -92,8 +92,6 @@ def test_classifier_output_rejects_removed_critical_mode() -> None:
 
 def test_classification_requires_authored_user_text() -> None:
     request = ClassifyRequest(
-        repository="acme/widgets",
-        task_id="task-1",
         conversation=(
             Message(role=Role.ASSISTANT, parts=(TextPart(text="context"),)),
             Message(role=Role.USER, parts=(TextPart(text="  "),)),
@@ -107,8 +105,6 @@ def test_classification_requires_authored_user_text() -> None:
 
 def test_classification_requires_an_offered_routing_identity() -> None:
     request = ClassifyRequest(
-        repository="acme/widgets",
-        task_id="task-1",
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Explain this"),)),),
         models=(ModelChoice(id="other", model="provider/other"),),
     )
@@ -122,8 +118,6 @@ def test_classification_preserves_exact_efforts_and_effort_free_models(
     effort: ReasoningEffort,
 ) -> None:
     request = ClassifyRequest(
-        repository="acme/widgets",
-        task_id="task-1",
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Classify this"),)),),
         models=(
             ModelChoice(id="plain", model="provider/plain"),
