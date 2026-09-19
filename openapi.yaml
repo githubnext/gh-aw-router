@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: gh-aw-router HTTP API
-  version: 0.1.0
+  version: 0.1.1
   license:
     name: MIT
     identifier: MIT
@@ -81,6 +81,8 @@ paths:
         Model choices follow the embedded classification_choices list, filtered
         to exact offered models and efforts. The first returned choice is preferred.
         Reasoning models require an explicit effort. No default effort is inferred.
+        If no offered choice is in the classifier cell, the response is 422 with
+        code no_route. Malformed requests are still rejected with invalid_request.
       requestBody:
         required: true
         content:
@@ -103,7 +105,13 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
-          $ref: "#/components/responses/InvalidRequest"
+          description: >-
+            Request schema violation (invalid_json), unsupported operation
+            (invalid_request), or no eligible classifier choice (no_route).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalError"
         "504":

@@ -2,7 +2,7 @@
 
 FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
 
-ARG VERSION=0.1.0
+ARG VERSION=0.1.1
 ARG VCS_REF=unknown
 ARG OPENAPI_SHA256
 ARG PIP_INDEX_URL=https://pypi.org/simple
