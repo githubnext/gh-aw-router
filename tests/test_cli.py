@@ -149,19 +149,21 @@ def test_validate_data_reports_the_loaded_table_summary() -> None:
     ]
 
 
+@pytest.mark.parametrize("command", ["route", "classify"])
 @pytest.mark.parametrize("unsupported", [False, True])
 def test_no_route_has_a_distinct_exit_status(
     planning_payload: Callable[[str], dict[str, Any]],
     synthetic_table_path: Path,
     unsupported: bool,
+    command: str,
 ) -> None:
-    request = planning_payload("route")
+    request = planning_payload(command)
     request["models"] = [{"id": "unsupported", "model": "provider/unknown"}] if unsupported else []
     stdout = io.StringIO()
     stderr = io.StringIO()
 
     status = run(
-        ["--routing-tables", str(synthetic_table_path), "route"],
+        ["--routing-tables", str(synthetic_table_path), command],
         stdin=io.StringIO(json.dumps(request)),
         stdout=stdout,
         stderr=stderr,
@@ -224,7 +226,7 @@ def test_parser_exposes_package_version(capsys: pytest.CaptureFixture[str]) -> N
         cli.build_parser().parse_args(["--version"])
 
     assert error.value.code == 0
-    assert capsys.readouterr().out == "gh-aw-router 0.1.0\n"
+    assert capsys.readouterr().out == "gh-aw-router 0.1.1\n"
 
 
 @pytest.mark.parametrize(

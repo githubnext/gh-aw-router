@@ -25,6 +25,7 @@ from gh_aw_router.contracts import (
     RoutingModeRecommendation,
     TextPart,
 )
+from gh_aw_router.routing import NoRouteError
 
 
 def test_shared_classify_request_matches_policy_order(
@@ -109,7 +110,7 @@ def test_classification_requires_an_offered_routing_identity() -> None:
         models=(ModelChoice(id="other", model="provider/other"),),
     )
 
-    with pytest.raises(ClassificationError, match="none of the available models"):
+    with pytest.raises(NoRouteError, match="none of the available models"):
         create_classification_plan(request, (ModelArm(model="provider/preferred"),))
 
 
