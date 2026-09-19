@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -39,6 +40,7 @@ def image() -> Iterator[str]:
     _docker(["version"])
     supplied = os.environ.get("GH_AW_ROUTER_TEST_IMAGE")
     name = supplied or f"gh-aw-router-contract:{uuid.uuid4().hex}"
+    openapi_sha256 = hashlib.sha256((PROJECT_ROOT / "openapi.yaml").read_bytes()).hexdigest()
     try:
         if not supplied:
             _docker(
@@ -48,6 +50,8 @@ def image() -> Iterator[str]:
                     IMAGE_PLATFORM,
                     "--build-arg",
                     f"PIP_INDEX_URL={_package_index_url()}",
+                    "--build-arg",
+                    f"OPENAPI_SHA256={openapi_sha256}",
                     "--tag",
                     name,
                     ".",
@@ -58,6 +62,9 @@ def image() -> Iterator[str]:
         details = json.loads(_docker(["image", "inspect", name]).stdout)[0]
         assert f"{details['Os']}/{details['Architecture']}" == IMAGE_PLATFORM
         assert details["Config"]["Labels"]["org.opencontainers.image.version"] == __version__
+        assert (
+            details["Config"]["Labels"]["io.github.gh-aw-router.openapi-sha256"] == openapi_sha256
+        )
         yield name
     finally:
         if not supplied:
