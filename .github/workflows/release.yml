@@ -1,0 +1,193 @@
+name: Release
+
+"on":
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and verify without publishing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write # Create the release and its tag
+      packages: write # Push to GHCR
+      id-token: write # Cosign keyless signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          python-version: '3.12'
+
+      - run: uv sync --locked --dev
+
+      - name: Resolve release identity
+        id: identity
+        run: |
+          set -euo pipefail
+          version=$(uv run --locked python -c 'from gh_aw_router import __version__; print(__version__)')
+          openapi_sha256=$(sha256sum openapi.yaml | cut -d' ' -f1)
+          if git rev-parse "v${version}" >/dev/null 2>&1; then
+            echo "::error::Tag v${version} already exists. Bump the package version in a pull request first."
+            exit 1
+          fi
+          {
+            echo "version=${version}"
+            echo "openapi_sha256=${openapi_sha256}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing v${version} from ${GITHUB_SHA} with OpenAPI ${openapi_sha256}"
+
+      - name: Verify the release artifacts
+        run: uv run --locked python -m pytest --run-release -m release
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
+        with:
+          platforms: arm64
+
+      # The contract suite runs against the exact image being published, so a
+      # release cannot ship an image whose behaviour differs from this commit.
+      - name: Build the amd64 image for verification
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE }}:verify
+          build-args: |
+            VERSION=${{ steps.identity.outputs.version }}
+            VCS_REF=${{ github.sha }}
+            OPENAPI_SHA256=${{ steps.identity.outputs.openapi_sha256 }}
+          cache-from: type=gha,scope=router
+          cache-to: type=gha,mode=max,scope=router
+
+      - name: Run the container contract suite against it
+        env:
+          GH_AW_ROUTER_TEST_IMAGE: ${{ env.IMAGE }}:verify
+        run: uv run --locked python -m pytest --run-docker -m docker
+
+      - name: Log in to GitHub Container Registry
+        if: ${{ !inputs.dry_run }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the multi-platform image
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: ${{ !inputs.dry_run }}
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.identity.outputs.version }}
+            ${{ env.IMAGE }}:latest
+          build-args: |
+            VERSION=${{ steps.identity.outputs.version }}
+            VCS_REF=${{ github.sha }}
+            OPENAPI_SHA256=${{ steps.identity.outputs.openapi_sha256 }}
+          cache-from: type=gha,scope=router
+          cache-to: type=gha,mode=max,scope=router
+
+      # Consumers pin this image by digest and refuse to start when any of these
+      # labels is missing, so a release that cannot be pinned must fail here.
+      - name: Verify the published provenance
+        if: ${{ !inputs.dry_run }}
+        env:
+          REFERENCE: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker pull --quiet "$REFERENCE"
+          labels=$(docker image inspect "$REFERENCE" --format '{{json .Config.Labels}}')
+          require() {
+            value=$(jq -r --arg key "$1" '.[$key] // ""' <<<"$labels")
+            if [[ ! "$value" =~ $2 ]]; then
+              echo "::error::Label $1 is '$value', which consumers will reject"
+              exit 1
+            fi
+          }
+          require org.opencontainers.image.source '^https://github\.com/[^/]+/[^/]+$'
+          require org.opencontainers.image.revision "^${GITHUB_SHA}$"
+          require org.opencontainers.image.version '^[0-9]+\.[0-9]+\.[0-9]+'
+          require io.github.gh-aw-router.openapi-sha256 "^${{ steps.identity.outputs.openapi_sha256 }}$"
+          docker buildx imagetools inspect "$REFERENCE" --format '{{json .Manifest}}' \
+            | jq -e '[.manifests[].platform | "\(.os)/\(.architecture)"] | index("linux/amd64") and index("linux/arm64")' > /dev/null
+
+      - name: Install cosign
+        if: ${{ !inputs.dry_run }}
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the image
+        if: ${{ !inputs.dry_run }}
+        run: cosign sign --yes "${{ env.IMAGE }}@${{ steps.build.outputs.digest }}"
+
+      - name: Generate the SBOM
+        if: ${{ !inputs.dry_run }}
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: gh-aw-router-sbom.spdx.json
+
+      - name: Attest the SBOM
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cosign attest --yes \
+            --predicate gh-aw-router-sbom.spdx.json \
+            --type spdxjson \
+            "${{ env.IMAGE }}@${{ steps.build.outputs.digest }}"
+
+      - name: Write the release notes
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<NOTES
+          Pin this release by digest:
+
+          \`\`\`
+          ${{ env.IMAGE }}:${{ steps.identity.outputs.version }}@${{ steps.build.outputs.digest }}
+          \`\`\`
+
+          | Field | Value |
+          | --- | --- |
+          | Platforms | linux/amd64, linux/arm64 |
+          | Source commit | ${{ github.sha }} |
+          | OpenAPI sha256 | ${{ steps.identity.outputs.openapi_sha256 }} |
+
+          The image is signed with cosign and carries an attested SPDX SBOM.
+          NOTES
+
+      - name: Create the GitHub release
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: v${{ steps.identity.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: v${{ steps.identity.outputs.version }}
+          body_path: release-notes.md
+          files: |
+            openapi.yaml
+            gh-aw-router-sbom.spdx.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

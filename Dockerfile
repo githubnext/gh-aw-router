@@ -4,13 +4,15 @@ FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c
 
 ARG VERSION=0.1.0
 ARG VCS_REF=unknown
+ARG OPENAPI_SHA256
 ARG PIP_INDEX_URL=https://pypi.org/simple
 LABEL org.opencontainers.image.title="gh-aw-router HTTP sidecar" \
     org.opencontainers.image.description="Stateless classification planning and model routing" \
     org.opencontainers.image.source="https://github.com/githubnext/gh-aw-router" \
     org.opencontainers.image.revision="${VCS_REF}" \
     org.opencontainers.image.version="${VERSION}" \
-    org.opencontainers.image.licenses="MIT"
+    org.opencontainers.image.licenses="MIT" \
+    io.github.gh-aw-router.openapi-sha256="${OPENAPI_SHA256}"
 
 ENV HOME=/home/gh-aw-router \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -39,6 +41,9 @@ RUN python -m pip install \
 COPY src /app/src
 RUN python -c "import sys; from gh_aw_router import __version__; sys.exit(0 if sys.argv[1] == __version__ else 'VERSION must match the package version')" "$VERSION"
 COPY routing /routing
+# Fails the build unless the label matches the shipped contract, so the label cannot drift from it.
+COPY openapi.yaml /app/openapi.yaml
+RUN printf '%s  /app/openapi.yaml\n' "${OPENAPI_SHA256}" | sha256sum --check --strict --quiet
 COPY LICENSE /usr/share/doc/gh-aw-router/LICENSE
 
 RUN find /app /routing -type d -exec chmod 0555 {} + \

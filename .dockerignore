@@ -1,6 +1,7 @@
 **
 !Dockerfile
 !LICENSE
+!openapi.yaml
 !requirements.lock
 !src/
 !src/**
