@@ -18,6 +18,7 @@ from gh_aw_router.contracts import (
     TaskType,
     TextPart,
 )
+from gh_aw_router.routing import NoRouteError
 
 MAX_PRIOR_TURNS: Final = 6
 MAX_PRIOR_TURN_CHARS: Final = 400
@@ -108,8 +109,9 @@ def create_classification_plan(
     """Rank exact offered choices by the embedded classifier preference order.
 
     Preserve caller identities and prefer the first matching table entry. Raise
-    ClassificationError for missing authored text, omitted reasoning effort, or
-    an empty intersection. No provider calls or default-effort inference occur.
+    ClassificationError for missing authored text or omitted reasoning effort,
+    and NoRouteError when no offered choice is in the classifier cell. No
+    provider calls or default-effort inference occur.
     """
     authored = authored_messages(request.conversation)
     if not authored:
@@ -139,7 +141,7 @@ def create_classification_plan(
                 )
             )
     if not ranked:
-        raise ClassificationError("none of the available models is in the classifier routing cell")
+        raise NoRouteError("none of the available models is in the classifier routing cell")
     return ClassifyResponse(
         system_prompt=SYSTEM_PROMPT,
         prompt=build_classification_prompt(authored),

@@ -15,7 +15,6 @@ from gh_aw_router.classification import (
     create_classification_plan,
 )
 from gh_aw_router.contracts import (
-    API_VERSION,
     ClassifierOutput,
     ClassifyRequest,
     Message,
@@ -26,6 +25,7 @@ from gh_aw_router.contracts import (
     RoutingModeRecommendation,
     TextPart,
 )
+from gh_aw_router.routing import NoRouteError
 
 
 def test_shared_classify_request_matches_policy_order(
@@ -93,9 +93,6 @@ def test_classifier_output_rejects_removed_critical_mode() -> None:
 
 def test_classification_requires_authored_user_text() -> None:
     request = ClassifyRequest(
-        api_version=API_VERSION,
-        repository="acme/widgets",
-        task_id="task-1",
         conversation=(
             Message(role=Role.ASSISTANT, parts=(TextPart(text="context"),)),
             Message(role=Role.USER, parts=(TextPart(text="  "),)),
@@ -109,14 +106,11 @@ def test_classification_requires_authored_user_text() -> None:
 
 def test_classification_requires_an_offered_routing_identity() -> None:
     request = ClassifyRequest(
-        api_version=API_VERSION,
-        repository="acme/widgets",
-        task_id="task-1",
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Explain this"),)),),
         models=(ModelChoice(id="other", model="provider/other"),),
     )
 
-    with pytest.raises(ClassificationError, match="none of the available models"):
+    with pytest.raises(NoRouteError, match="none of the available models"):
         create_classification_plan(request, (ModelArm(model="provider/preferred"),))
 
 
@@ -125,9 +119,6 @@ def test_classification_preserves_exact_efforts_and_effort_free_models(
     effort: ReasoningEffort,
 ) -> None:
     request = ClassifyRequest(
-        api_version=API_VERSION,
-        repository="acme/widgets",
-        task_id="task-1",
         conversation=(Message(role=Role.USER, parts=(TextPart(text="Classify this"),)),),
         models=(
             ModelChoice(id="plain", model="provider/plain"),

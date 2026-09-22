@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: gh-aw-router HTTP API
-  version: 0.2.0
+  version: 0.1.1
   license:
     name: MIT
     identifier: MIT
@@ -9,14 +9,16 @@ info:
     Stateless classification planning and model routing for trusted host adapters.
     gh-aw-router does not call model providers. The caller executes the returned
     classifier prompts and dispatches one of the returned route choices.
+    This document describes the matching router release. Clients pin a tested
+    image digest; requests do not negotiate an independent API version.
     Each route request supplies a goal, either cost or cost-speed, and a mode, either
     economy, balanced, robust, or auto. Auto uses the supplied classification's mode,
     falling back to balanced when classification is absent or its mode is unknown.
     /capabilities lists the fixed profiles the loaded tables serve.
     Schema-5 tables each carry one fixed profile.
     Older schemas are rejected. Unserved profiles return invalid_request without fallback.
-    Both planning requests require repository and task_id as caller metadata.
-    These identifiers do not select a routing policy or cause data to be stored.
+    Planning requests contain only decision inputs. Execution identity and
+    outcome correlation remain with the caller; the router stores no task state.
     Every application error uses the Error envelope, including unknown paths,
     which return 404 with code not_found. Under overload the server may return a
     bare 503 before the application runs.
@@ -50,7 +52,7 @@ paths:
   /capabilities:
     get:
       operationId: getCapabilities
-      summary: Read supported contracts, profiles, models, and efforts
+      summary: Read release identity, profiles, models, and efforts
       responses:
         "200":
           description: Current service capabilities.
@@ -79,6 +81,8 @@ paths:
         Model choices follow the embedded classification_choices list, filtered
         to exact offered models and efforts. The first returned choice is preferred.
         Reasoning models require an explicit effort. No default effort is inferred.
+        If no offered choice is in the classifier cell, the response is 422 with
+        code no_route. Malformed requests are still rejected with invalid_request.
       requestBody:
         required: true
         content:
@@ -101,7 +105,13 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
-          $ref: "#/components/responses/InvalidRequest"
+          description: >-
+            Request schema violation (invalid_json), unsupported operation
+            (invalid_request), or no eligible classifier choice (no_route).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalError"
         "504":
@@ -120,6 +130,8 @@ paths:
         Task labels are supplied only in classification.labels.
         Without classification, deterministic heuristics infer task type
         and scope from the last authored user message and leave complexity unknown.
+        Every uninferred field remains unknown, including all three fields when
+        no heuristic cues match. Invalid non-null classification is rejected.
         The resolved profile must be loaded or the request returns invalid_request.
         Every returned choice is one of the exact choices supplied by the caller.
         Model-effort pairs absent from the routing table are ignored, including
@@ -150,7 +162,9 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "422":
-          description: Invalid request or no eligible route.
+          description: >-
+            Request schema violation (invalid_json), unsupported operation
+            (invalid_request), or no eligible route (no_route).
           content:
             application/json:
               schema:
@@ -163,7 +177,7 @@ paths:
 components:
   responses:
     InvalidJson:
-      description: The body is malformed or does not match the closed request schema.
+      description: The body is malformed JSON.
       content:
         application/json:
           schema:
@@ -189,7 +203,9 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     InvalidRequest:
-      description: Decoded values are unsupported or cannot produce an operation.
+      description: >-
+        The body violates the closed request schema (invalid_json), or decoded
+        values are unsupported or cannot produce an operation (invalid_request).
       content:
         application/json:
           schema:
@@ -211,15 +227,8 @@ components:
     ClassifyRequest:
       type: object
       additionalProperties: false
-      required: [api_version, repository, task_id, conversation, models]
+      required: [conversation, models]
       properties:
-        api_version:
-          type: string
-          const: "0.2.0"
-        repository:
-          $ref: "#/components/schemas/Repository"
-        task_id:
-          $ref: "#/components/schemas/TaskId"
         conversation:
           $ref: "#/components/schemas/Conversation"
         models:
@@ -240,6 +249,7 @@ components:
           type: string
         ranked_choices:
           type: array
+          minItems: 1
           items:
             $ref: "#/components/schemas/ModelChoice"
 
@@ -256,15 +266,8 @@ components:
     RouteRequest:
       type: object
       additionalProperties: false
-      required: [api_version, repository, task_id, objective, conversation]
+      required: [objective, conversation]
       properties:
-        api_version:
-          type: string
-          const: "0.2.0"
-        repository:
-          $ref: "#/components/schemas/Repository"
-        task_id:
-          $ref: "#/components/schemas/TaskId"
         objective:
           $ref: "#/components/schemas/RoutingObjective"
         conversation:
@@ -286,17 +289,6 @@ components:
           description: Offered candidates. Every id must be unique.
           items:
             $ref: "#/components/schemas/ModelCandidate"
-
-    Repository:
-      type: string
-      pattern: '^[^/\s]+/[^/\s]+$'
-      description: GitHub repository in owner/repo form. Caller metadata, not policy selection.
-
-    TaskId:
-      type: string
-      minLength: 1
-      pattern: '\S'
-      description: Opaque task identifier, stable across classification, routing, and retries.
 
     RouteResponse:
       type: object
@@ -498,7 +490,6 @@ components:
       required:
         - name
         - version
-        - api_versions
         - routing_profiles
         - execution_catalogue
       properties:
@@ -506,10 +497,6 @@ components:
           type: string
         version:
           type: string
-        api_versions:
-          type: array
-          items:
-            type: string
         routing_profiles:
           type: array
           minItems: 1
