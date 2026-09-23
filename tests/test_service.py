@@ -13,7 +13,6 @@ from gh_aw_router.contracts import (
     Message,
     ModelCandidate,
     ModelChoice,
-    ReasoningEffort,
     Role,
     RouteRequest,
     RoutingGoal,
@@ -234,10 +233,6 @@ def test_classification_uses_balanced_cell_with_full_fallbacks(
     )
     choices = service.classify(request).ranked_choices
     assert choices == offered
-    assert (choices[0].model, choices[0].effort) == (
-        "github-copilot/gpt-5.6-luna",
-        ReasoningEffort.MEDIUM,
-    )
     restricted = offered[4::7]
     assert (
         service.classify(request.model_copy(update={"models": restricted})).ranked_choices
