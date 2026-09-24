@@ -1,3 +1,3 @@
 """Standalone gh-aw-router classification planning and model routing."""
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"

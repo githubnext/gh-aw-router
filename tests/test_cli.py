@@ -226,7 +226,7 @@ def test_parser_exposes_package_version(capsys: pytest.CaptureFixture[str]) -> N
         cli.build_parser().parse_args(["--version"])
 
     assert error.value.code == 0
-    assert capsys.readouterr().out == "gh-aw-router 0.1.1\n"
+    assert capsys.readouterr().out == "gh-aw-router 0.1.2\n"
 
 
 @pytest.mark.parametrize(
